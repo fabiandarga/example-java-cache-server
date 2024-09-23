@@ -31,7 +31,7 @@ public class Main {
 
     static class MyHandler implements HttpHandler {
         private final Connection conn;
-        private HashMap<Integer, String> cache = new HashMap();
+        private final HashMap<Integer, String> cache = new HashMap<>();
 
         public MyHandler(Connection conn) {
             this.conn = conn;
