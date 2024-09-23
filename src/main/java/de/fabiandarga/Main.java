@@ -31,6 +31,7 @@ public class Main {
 
     static class MyHandler implements HttpHandler {
         private final Connection conn;
+        private HashMap<Integer, String> cache = new HashMap();
 
         public MyHandler(Connection conn) {
             this.conn = conn;
@@ -38,6 +39,8 @@ public class Main {
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            long tsStart = System.currentTimeMillis();
+
             // Parse query parameters
             Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getQuery());
 
@@ -50,18 +53,25 @@ public class Main {
                     int number = Integer.parseInt(numberParam);
                     response = "You entered the number: " + number;
 
-                    // Do the Database query
-                    String sql = "SELECT color, COUNT(*) as amount FROM pairs WHERE number=? GROUP BY color";
-                    PreparedStatement statement = this.conn.prepareStatement(sql);
-                    statement.setInt(1, number);
-                    ResultSet rs = statement.executeQuery();
+                    if (this.cache.containsKey(number)) {
+                        response +=  this.cache.get(number);
+                        System.out.println("reading from cache for number " + number);
+                    } else {
+                        // Do the Database query
+                        String sql = "SELECT color, COUNT(*) as amount FROM pairs WHERE number=? GROUP BY color";
+                        PreparedStatement statement = this.conn.prepareStatement(sql);
+                        statement.setInt(1, number);
+                        ResultSet rs = statement.executeQuery();
 
-                    ArrayList<String> colors = new ArrayList<>();
-                    while (rs.next()) {
-                        String group = rs.getString("color") + ": " + rs.getInt("amount") + " / ";
-                        colors.add(group);
+                        ArrayList<String> colors = new ArrayList<>();
+                        while (rs.next()) {
+                            String group = rs.getString("color") + ": " + rs.getInt("amount");
+                            colors.add(group);
+                        }
+                        response += colors;
+                        this.cache.put(number, colors.toString());
+                        System.out.println("wrote to cache for number " + number);
                     }
-                    response +=  colors;
                 } catch (NumberFormatException e) {
                     response = "Invalid number format.";
                 } catch (SQLException e) {
@@ -71,12 +81,17 @@ public class Main {
                 response = "Please provide a 'number' parameter.";
             }
 
+
+            long tsDiff = System.currentTimeMillis() - tsStart;
+            response += " ( duration=" + tsDiff + " ms )";
             // Send response back to client
             exchange.sendResponseHeaders(200, response.length()); // HTTP 200 OK
             OutputStream os = exchange.getResponseBody();
             os.write(response.getBytes());
             os.close();
         }
+
+
 
         // Utility method to parse query parameters
         private Map<String, String> parseQueryParams(String query) {
