@@ -7,18 +7,22 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.sql.*;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 
 public class Main {
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, SQLException {
         String url = "jdbc:postgresql://localhost:5432/numbers_and_colors";
         String user = "numbers_and_colors_admin";
         String password = "123456";
 
+        Connection conn = DriverManager.getConnection(url, user, password);
+
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
 
-        server.createContext("/", new MyHandler());
+        server.createContext("/", new MyHandler(conn));
 
         // Start the server
         server.start();
@@ -26,6 +30,12 @@ public class Main {
     }
 
     static class MyHandler implements HttpHandler {
+        private final Connection conn;
+
+        public MyHandler(Connection conn) {
+            this.conn = conn;
+        }
+
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             // Parse query parameters
@@ -39,8 +49,23 @@ public class Main {
                 try {
                     int number = Integer.parseInt(numberParam);
                     response = "You entered the number: " + number;
+
+                    // Do the Database query
+                    String sql = "SELECT color, COUNT(*) as amount FROM pairs WHERE number=? GROUP BY color";
+                    PreparedStatement statement = this.conn.prepareStatement(sql);
+                    statement.setInt(1, number);
+                    ResultSet rs = statement.executeQuery();
+
+                    ArrayList<String> colors = new ArrayList<>();
+                    while (rs.next()) {
+                        String group = rs.getString("color") + ": " + rs.getInt("amount") + " / ";
+                        colors.add(group);
+                    }
+                    response +=  colors;
                 } catch (NumberFormatException e) {
                     response = "Invalid number format.";
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
                 }
             } else {
                 response = "Please provide a 'number' parameter.";
